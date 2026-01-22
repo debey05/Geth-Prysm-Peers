@@ -1,0 +1,85 @@
+{{- if .Values.monitoring.grafana.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: {{ .Values.namespace.monitoring }}
+  labels:
+    {{- include "ethereum-node.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.monitoring.grafana.storage.size }}
+  storageClassName: {{ .Values.monitoring.grafana.storage.storageClassName }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: {{ .Values.namespace.monitoring }}
+  labels:
+    {{- include "ethereum-node.labels" . | nindent 4 }}
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: "{{ .Values.monitoring.grafana.image.repository }}:{{ .Values.monitoring.grafana.image.tag }}"
+        imagePullPolicy: {{ .Values.monitoring.grafana.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.monitoring.grafana.service.port }}
+          name: web
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: {{ .Values.monitoring.grafana.adminUser | quote }}
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: {{ .Values.monitoring.grafana.adminPassword | quote }}
+        - name: GF_INSTALL_PLUGINS
+          value: grafana-piechart-panel
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/grafana
+        - name: datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        - name: dashboards-config
+          mountPath: /etc/grafana/provisioning/dashboards
+        resources:
+          {{- toYaml .Values.monitoring.grafana.resources | nindent 10 }}
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: grafana-data
+      - name: datasources
+        configMap:
+          name: grafana-datasources
+      - name: dashboards-config
+        configMap:
+          name: grafana-dashboards-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: {{ .Values.namespace.monitoring }}
+  labels:
+    {{- include "ethereum-node.labels" . | nindent 4 }}
+    app: grafana
+spec:
+  type: {{ .Values.monitoring.grafana.service.type }}
+  ports:
+  - port: {{ .Values.monitoring.grafana.service.port }}
+    targetPort: {{ .Values.monitoring.grafana.service.port }}
+    name: web
+  selector:
+    app: grafana
+{{- end }}
